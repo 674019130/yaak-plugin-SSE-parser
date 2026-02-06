@@ -1,0 +1,15 @@
+{
+  "name": "@su-su/yaak-plugin-sse-parser",
+  "displayName": "SSE Response Parser",
+  "description": "Parse SSE streaming responses from Claude, ChatGPT, Gemini, or custom formats",
+  "version": "0.1.0",
+  "author": "Su",
+  "license": "MIT",
+  "scripts": {
+    "build": "yaakcli build",
+    "dev": "yaakcli dev"
+  },
+  "dependencies": {
+    "@yaakapp/api": "^0.8.0"
+  }
+}
