@@ -2,6 +2,11 @@
 // SSE Event Types
 // ============================================================
 
+export interface CustomRule {
+  name: string;
+  path: string;
+}
+
 export interface SSEEvent {
   event?: string;
   data: string;
@@ -284,7 +289,7 @@ export function extractText(
       return {
         content: '',
         error:
-          'Cannot auto-detect provider. Use: claude, chatgpt, gemini, or a custom path like choices[0].delta.content',
+          'Cannot auto-detect provider. Use: Claude, ChatGPT, Gemini, or a custom JSON path like choices[0].delta.content',
       };
     }
     expr = detected;

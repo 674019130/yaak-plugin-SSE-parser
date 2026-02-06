@@ -200,7 +200,7 @@ function extractText(payload, filterExpr) {
     if (!detected) {
       return {
         content: "",
-        error: "Cannot auto-detect provider. Use: claude, chatgpt, gemini, or a custom path like choices[0].delta.content"
+        error: "Cannot auto-detect provider. Use: Claude, ChatGPT, Gemini, or a custom JSON path like choices[0].delta.content"
       };
     }
     expr = detected;
@@ -323,10 +323,11 @@ async function parseAndShow(ctx, args, mode) {
     await ctx.toast.show({ message: "Copied to clipboard", icon: "copy", color: "success" });
   }
 }
+var STORE_KEY = "custom-rules";
 var plugin = {
   filter: {
     name: "SSE",
-    description: "Parse SSE streaming responses (claude / chatgpt / gemini / auto / custom path)",
+    description: "Parse SSE streaming responses (Claude / ChatGPT / Gemini / auto / custom JSON path)",
     onFilter(_ctx, args) {
       const result = extractText(args.payload, args.filter);
       if (result.error) {
@@ -337,7 +338,7 @@ var plugin = {
   },
   httpRequestActions: [
     {
-      label: "Parse SSE \u2192 Show Text (Auto Detect)",
+      label: "SSE \u203A Parse (Auto Detect)",
       icon: "eye",
       async onSelect(ctx, args) {
         try {
@@ -347,17 +348,120 @@ var plugin = {
         }
       }
     },
-    ...["claude", "chatgpt", "gemini"].map((key) => ({
-      label: `Parse SSE \u2192 Show Text (${PROVIDERS[key].name})`,
-      icon: "eye",
+    {
+      label: "SSE \u203A Parse (Select Provider)",
+      icon: "search",
       async onSelect(ctx, args) {
         try {
-          await parseAndShow(ctx, args, key);
+          const builtinOptions = Object.entries(PROVIDERS).map(([key, p]) => ({
+            label: p.name,
+            value: key
+          }));
+          const customRules = await ctx.store.get(STORE_KEY) ?? [];
+          const customOptions = customRules.map((r) => ({
+            label: `${r.name} (${r.path})`,
+            value: r.path
+          }));
+          const allOptions = customOptions.length > 0 ? [...builtinOptions, ...customOptions] : builtinOptions;
+          const result = await ctx.prompt.form({
+            id: "sse-select-provider",
+            title: "Select Provider",
+            confirmText: "Parse",
+            cancelText: "Cancel",
+            inputs: [
+              {
+                type: "select",
+                name: "provider",
+                label: "Provider",
+                options: allOptions,
+                defaultValue: allOptions[0].value
+              }
+            ]
+          });
+          if (result == null) return;
+          const provider = result.provider || allOptions[0].value;
+          await parseAndShow(ctx, args, provider);
         } catch (err) {
           await ctx.toast.show({ message: `Failed to parse: ${err}`, color: "danger" });
         }
       }
-    }))
+    },
+    {
+      label: "SSE \u203A Add Custom Rule",
+      icon: "plus",
+      async onSelect(ctx, _args) {
+        try {
+          const rules = await ctx.store.get(STORE_KEY) ?? [];
+          const rulesMd = rules.length > 0 ? [
+            "| # | Name | JSON Path |",
+            "|---|------|-----------|",
+            ...rules.map((r, i) => `| ${i + 1} | ${r.name} | \`${r.path}\` |`)
+          ].join("\n") : "_No custom rules yet._";
+          const result = await ctx.prompt.form({
+            id: "sse-add-rule",
+            title: "Add Custom Rule",
+            confirmText: "Add",
+            cancelText: "Cancel",
+            inputs: [
+              { type: "banner", color: "info", inputs: [{ type: "markdown", content: rulesMd }] },
+              { type: "text", name: "new_name", label: "Rule Name", placeholder: "My Rule" },
+              { type: "text", name: "new_path", label: "JSON Path", placeholder: "choices[0].delta.content" }
+            ]
+          });
+          if (result == null) return;
+          const newName = result.new_name?.trim();
+          const newPath = result.new_path?.trim();
+          if (!newName || !newPath) {
+            await ctx.toast.show({ message: "Please fill in both name and path", color: "warning" });
+            return;
+          }
+          if (rules.some((r) => r.name === newName)) {
+            await ctx.toast.show({ message: `Rule "${newName}" already exists`, color: "warning" });
+            return;
+          }
+          await ctx.store.set(STORE_KEY, [...rules, { name: newName, path: newPath }]);
+          await ctx.toast.show({ message: `Rule "${newName}" added`, icon: "check", color: "success" });
+        } catch (err) {
+          await ctx.toast.show({ message: `Error: ${err}`, color: "danger" });
+        }
+      }
+    },
+    {
+      label: "SSE \u203A Delete Custom Rule",
+      icon: "trash",
+      async onSelect(ctx, _args) {
+        try {
+          const rules = await ctx.store.get(STORE_KEY) ?? [];
+          if (rules.length === 0) {
+            await ctx.toast.show({ message: "No custom rules to delete", color: "info" });
+            return;
+          }
+          const options = rules.map((r) => ({ label: `${r.name} (${r.path})`, value: r.name }));
+          const result = await ctx.prompt.form({
+            id: "sse-delete-rule",
+            title: "Delete Custom Rule",
+            confirmText: "Delete",
+            cancelText: "Cancel",
+            inputs: [
+              {
+                type: "select",
+                name: "rule",
+                label: "Select rule to delete",
+                options,
+                defaultValue: options[0].value
+              }
+            ]
+          });
+          if (result == null) return;
+          const deleteName = result.rule || options[0].value;
+          const updated = rules.filter((r) => r.name !== deleteName);
+          await ctx.store.set(STORE_KEY, updated);
+          await ctx.toast.show({ message: `Rule "${deleteName}" deleted`, icon: "trash", color: "success" });
+        } catch (err) {
+          await ctx.toast.show({ message: `Error: ${err}`, color: "danger" });
+        }
+      }
+    }
   ]
 };
 // Annotate the CommonJS export names for ESM import in node:

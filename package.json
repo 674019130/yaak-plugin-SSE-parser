@@ -5,6 +5,11 @@
   "version": "0.1.0",
   "author": "Su",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/674019130/yaak-plugin-SSE-parser.git"
+  },
+  "homepage": "https://github.com/674019130/yaak-plugin-SSE-parser",
   "scripts": {
     "build": "yaakcli build",
     "dev": "yaakcli dev"

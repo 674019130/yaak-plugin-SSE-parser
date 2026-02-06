@@ -4,7 +4,7 @@ import type {
   FormInput,
 } from '@yaakapp/api/lib/bindings/gen_events';
 import { readFileSync } from 'node:fs';
-import { extractText, extractMeta, parseSSEEvents, detectProvider, PROVIDERS } from './sse';
+import { extractText, extractMeta, parseSSEEvents, detectProvider, PROVIDERS, type CustomRule } from './sse';
 
 function countWords(text: string): number {
   const cjk = text.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g)?.length ?? 0;
@@ -115,11 +115,13 @@ async function parseAndShow(ctx: Context, args: CallHttpRequestActionArgs, mode:
   }
 }
 
+const STORE_KEY = 'custom-rules';
+
 export const plugin: PluginDefinition = {
   filter: {
     name: 'SSE',
     description:
-      'Parse SSE streaming responses (claude / chatgpt / gemini / auto / custom path)',
+      'Parse SSE streaming responses (Claude / ChatGPT / Gemini / auto / custom JSON path)',
     onFilter(_ctx, args) {
       const result = extractText(args.payload, args.filter);
       if (result.error) {
@@ -131,7 +133,7 @@ export const plugin: PluginDefinition = {
 
   httpRequestActions: [
     {
-      label: 'Parse SSE → Show Text (Auto Detect)',
+      label: 'SSE › Parse (Auto Detect)',
       icon: 'eye',
       async onSelect(ctx, args) {
         try {
@@ -141,16 +143,134 @@ export const plugin: PluginDefinition = {
         }
       },
     },
-    ...(['claude', 'chatgpt', 'gemini'] as const).map((key) => ({
-      label: `Parse SSE → Show Text (${PROVIDERS[key].name})`,
-      icon: 'eye' as const,
+    {
+      label: 'SSE › Parse (Select Provider)',
+      icon: 'search',
       async onSelect(ctx: Context, args: CallHttpRequestActionArgs) {
         try {
-          await parseAndShow(ctx, args, key);
+          const builtinOptions = Object.entries(PROVIDERS).map(([key, p]) => ({
+            label: p.name,
+            value: key,
+          }));
+          const customRules = (await ctx.store.get<CustomRule[]>(STORE_KEY)) ?? [];
+          const customOptions = customRules.map((r) => ({
+            label: `${r.name} (${r.path})`,
+            value: r.path,
+          }));
+
+          const allOptions = customOptions.length > 0
+            ? [...builtinOptions, ...customOptions]
+            : builtinOptions;
+
+          const result = await ctx.prompt.form({
+            id: 'sse-select-provider',
+            title: 'Select Provider',
+            confirmText: 'Parse',
+            cancelText: 'Cancel',
+            inputs: [
+              {
+                type: 'select',
+                name: 'provider',
+                label: 'Provider',
+                options: allOptions,
+                defaultValue: allOptions[0].value,
+              },
+            ],
+          });
+
+          if (result == null) return;
+          const provider = (result.provider as string) || allOptions[0].value;
+          await parseAndShow(ctx, args, provider);
         } catch (err) {
           await ctx.toast.show({ message: `Failed to parse: ${err}`, color: 'danger' });
         }
       },
-    })),
+    },
+    {
+      label: 'SSE › Add Custom Rule',
+      icon: 'plus',
+      async onSelect(ctx: Context, _args: CallHttpRequestActionArgs) {
+        try {
+          const rules = (await ctx.store.get<CustomRule[]>(STORE_KEY)) ?? [];
+
+          const rulesMd = rules.length > 0
+            ? [
+                '| # | Name | JSON Path |',
+                '|---|------|-----------|',
+                ...rules.map((r, i) => `| ${i + 1} | ${r.name} | \`${r.path}\` |`),
+              ].join('\n')
+            : '_No custom rules yet._';
+
+          const result = await ctx.prompt.form({
+            id: 'sse-add-rule',
+            title: 'Add Custom Rule',
+            confirmText: 'Add',
+            cancelText: 'Cancel',
+            inputs: [
+              { type: 'banner', color: 'info', inputs: [{ type: 'markdown', content: rulesMd }] },
+              { type: 'text', name: 'new_name', label: 'Rule Name', placeholder: 'My Rule' },
+              { type: 'text', name: 'new_path', label: 'JSON Path', placeholder: 'choices[0].delta.content' },
+            ],
+          });
+
+          if (result == null) return;
+
+          const newName = (result.new_name as string)?.trim();
+          const newPath = (result.new_path as string)?.trim();
+          if (!newName || !newPath) {
+            await ctx.toast.show({ message: 'Please fill in both name and path', color: 'warning' });
+            return;
+          }
+          if (rules.some((r) => r.name === newName)) {
+            await ctx.toast.show({ message: `Rule "${newName}" already exists`, color: 'warning' });
+            return;
+          }
+
+          await ctx.store.set(STORE_KEY, [...rules, { name: newName, path: newPath }]);
+          await ctx.toast.show({ message: `Rule "${newName}" added`, icon: 'check', color: 'success' });
+        } catch (err) {
+          await ctx.toast.show({ message: `Error: ${err}`, color: 'danger' });
+        }
+      },
+    },
+    {
+      label: 'SSE › Delete Custom Rule',
+      icon: 'trash',
+      async onSelect(ctx: Context, _args: CallHttpRequestActionArgs) {
+        try {
+          const rules = (await ctx.store.get<CustomRule[]>(STORE_KEY)) ?? [];
+          if (rules.length === 0) {
+            await ctx.toast.show({ message: 'No custom rules to delete', color: 'info' });
+            return;
+          }
+
+          const options = rules.map((r) => ({ label: `${r.name} (${r.path})`, value: r.name }));
+          const result = await ctx.prompt.form({
+            id: 'sse-delete-rule',
+            title: 'Delete Custom Rule',
+            confirmText: 'Delete',
+            cancelText: 'Cancel',
+            inputs: [
+              {
+                type: 'select',
+                name: 'rule',
+                label: 'Select rule to delete',
+                options,
+                defaultValue: options[0].value,
+              },
+            ],
+          });
+
+          if (result == null) return;
+
+          const deleteName = (result.rule as string) || options[0].value;
+          const updated = rules.filter((r) => r.name !== deleteName);
+          await ctx.store.set(STORE_KEY, updated);
+          await ctx.toast.show({ message: `Rule "${deleteName}" deleted`, icon: 'trash', color: 'success' });
+        } catch (err) {
+          await ctx.toast.show({ message: `Error: ${err}`, color: 'danger' });
+        }
+      },
+    },
   ],
 };
