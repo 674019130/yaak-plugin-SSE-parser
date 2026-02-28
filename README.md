@@ -33,6 +33,7 @@ Right-click on any HTTP request to access:
 | **SSE > Parse (Select Provider)** | Choose from built-in providers + custom rules |
 | **SSE > Add Custom Rule** | Add a named JSON path rule (persisted) |
 | **SSE > Delete Custom Rule** | Remove a saved custom rule |
+| **Strip > Clean Clipboard** | Remove all whitespace from clipboard content |
 
 ### Parse Result Dialog
 
@@ -59,6 +60,12 @@ JSON path supports dot notation, bracket indices, and optional `$.` prefix:
 - `$.candidates[0].content.parts[0].text`
 - `data.text`
 
+### Clean Clipboard
+
+**Strip > Clean Clipboard** reads your clipboard, removes all whitespace (spaces, newlines, tabs), and writes the cleaned text back. Useful for pasting API keys, tokens, or JSON values that contain unwanted whitespace.
+
+Cross-platform support: macOS (`pbpaste`), Windows (`powershell Get-Clipboard`), Linux (`xclip` / `xsel`).
+
 ## Installation
 
 Install from the [Yaak Plugin Directory](https://yaak.app/plugins), or for local development:
@@ -69,6 +76,20 @@ cd yaak-plugin-SSE-parser
 npm install
 npm run dev
 ```
+
+## Changelog
+
+### 0.1.2
+- Added **Strip > Clean Clipboard** action — one-click whitespace removal from clipboard content (cross-platform)
+
+### 0.1.1
+- Added custom rule management (add / delete named JSON path rules)
+- Improved parse result dialog with metadata, token usage, thinking content
+
+### 0.1.0
+- Initial release with SSE parsing for Claude, ChatGPT, Gemini
+- Response filter and auto-detect provider
+- Parse result dialog with copy-to-clipboard
 
 ## License
 
