@@ -2,7 +2,7 @@
   "name": "@su-su/yaak-plugin-sse-parser",
   "displayName": "SSE Response Parser",
   "description": "Parse SSE streaming responses from Claude, ChatGPT, Gemini, or custom formats",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "author": "Su",
   "license": "MIT",
   "repository": {

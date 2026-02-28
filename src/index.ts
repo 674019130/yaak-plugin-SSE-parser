@@ -3,7 +3,9 @@ import type {
   CallHttpRequestActionArgs,
   FormInput,
 } from '@yaakapp/api/lib/bindings/gen_events';
+import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { platform } from 'node:os';
 import { extractText, extractMeta, parseSSEEvents, detectProvider, PROVIDERS, type CustomRule } from './sse';
 
 function countWords(text: string): number {
@@ -267,6 +269,56 @@ export const plugin: PluginDefinition = {
           const updated = rules.filter((r) => r.name !== deleteName);
           await ctx.store.set(STORE_KEY, updated);
           await ctx.toast.show({ message: `Rule "${deleteName}" deleted`, icon: 'trash', color: 'success' });
+        } catch (err) {
+          await ctx.toast.show({ message: `Error: ${err}`, color: 'danger' });
+        }
+      },
+    },
+
+    {
+      label: 'Strip › Clean Clipboard',
+      icon: 'copy',
+      async onSelect(ctx: Context, _args: CallHttpRequestActionArgs) {
+        try {
+          let text: string;
+          try {
+            const os = platform();
+            if (os === 'darwin') {
+              text = execSync('pbpaste', { encoding: 'utf-8' });
+            } else if (os === 'win32') {
+              text = execSync('powershell -command "Get-Clipboard"', { encoding: 'utf-8' });
+            } else {
+              // Linux: try xclip first, fall back to xsel
+              try {
+                text = execSync('xclip -selection clipboard -o', { encoding: 'utf-8' });
+              } catch {
+                text = execSync('xsel --clipboard --output', { encoding: 'utf-8' });
+              }
+            }
+          } catch {
+            await ctx.toast.show({ message: 'Failed to read clipboard', color: 'danger' });
+            return;
+          }
+
+          if (!text) {
+            await ctx.toast.show({ message: 'Clipboard is empty', color: 'warning' });
+            return;
+          }
+
+          const stripped = text.replace(/\s/g, '');
+          const removed = text.length - stripped.length;
+
+          if (removed === 0) {
+            await ctx.toast.show({ message: 'No whitespace found in clipboard', color: 'info' });
+            return;
+          }
+
+          await ctx.clipboard.copyText(stripped);
+          await ctx.toast.show({
+            message: `Done! ${removed} whitespace char${removed !== 1 ? 's' : ''} removed`,
+            icon: 'check',
+            color: 'success',
+          });
         } catch (err) {
           await ctx.toast.show({ message: `Error: ${err}`, color: 'danger' });
         }
